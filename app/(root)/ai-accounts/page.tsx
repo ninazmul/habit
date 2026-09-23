@@ -523,25 +523,27 @@ export default function AIAccountsPage() {
                       )}
                     </div>
 
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => openEditModal(acc)}
-                      className="h-8 w-8 text-muted-foreground hover:text-primary"
-                      aria-label={`Edit ${acc.name}`}
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => openEditModal(acc)}
+                        className="h-8 w-8 text-muted-foreground hover:text-primary"
+                        aria-label={`Edit ${acc.name}`}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
 
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(acc._id)}
-                      className="h-8 w-8 text-muted-foreground hover:text-red-500"
-                      aria-label={`Delete ${acc.name}`}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(acc._id)}
+                        className="h-8 w-8 text-muted-foreground hover:text-red-500"
+                        aria-label={`Delete ${acc.name}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
