@@ -5,7 +5,11 @@ import { connectToDatabase } from "@/lib/database";
 import { Transaction } from "@/lib/database/models/transaction.model";
 import { Investment } from "@/lib/database/models/investment.model";
 import { Loan } from "@/lib/database/models/loan.model";
-import { TransactionSchema, InvestmentSchema, LoanSchema } from "@/validations/habit";
+import {
+  TransactionSchema,
+  InvestmentSchema,
+  LoanSchema,
+} from "@/validations/habit";
 import { revalidatePath } from "next/cache";
 import { startOfMonth, endOfMonth } from "date-fns";
 
@@ -26,9 +30,7 @@ export async function getExpenses(month?: string) {
     query.date = { $gte: start, $lte: end };
   }
 
-  const expenses = await Transaction.find(query)
-    .sort({ date: -1 })
-    .lean();
+  const expenses = await Transaction.find(query).sort({ date: -1 }).lean();
 
   return JSON.parse(JSON.stringify(expenses));
 }
@@ -69,8 +71,7 @@ export async function deleteExpense(id: string) {
 
 export async function getExpenseStats() {
   const { userId } = await auth();
-  if (!userId)
-    return { thisMonthTotal: 0, lastMonthTotal: 0, byCategory: [] };
+  if (!userId) return { thisMonthTotal: 0, lastMonthTotal: 0, byCategory: [] };
 
   await connectToDatabase();
 
@@ -79,7 +80,14 @@ export async function getExpenseStats() {
   const mEnd = endOfMonth(now);
 
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+  const lastMonthEnd = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    0,
+    23,
+    59,
+    59,
+  );
 
   const [thisMonth, lastMonth] = await Promise.all([
     Transaction.find({
@@ -156,7 +164,7 @@ export async function updateInvestment(id: string, rawInput: unknown) {
   const investment = await Investment.findOneAndUpdate(
     { _id: id, userId },
     { $set: updateData },
-    { new: true }
+    { new: true },
   ).lean();
 
   if (!investment) throw new Error("Investment not found");
@@ -187,10 +195,13 @@ export async function getInvestmentStats() {
   await connectToDatabase();
   const investments = await Investment.find({ userId }).lean();
 
-  const totalInvested = investments.reduce((s, i) => s + (i.amountInvested || 0), 0);
+  const totalInvested = investments.reduce(
+    (s, i) => s + (i.amountInvested || 0),
+    0,
+  );
   const currentValue = investments.reduce(
     (s, i) => s + (i.currentValue ?? i.amountInvested ?? 0),
-    0
+    0,
   );
 
   return { totalInvested, currentValue, portfolioCount: investments.length };
@@ -248,7 +259,7 @@ export async function updateLoan(id: string, rawInput: unknown) {
   const loan = await Loan.findOneAndUpdate(
     { _id: id, userId },
     { $set: updateData },
-    { new: true }
+    { new: true },
   ).lean();
 
   if (!loan) throw new Error("Loan not found");
@@ -268,10 +279,59 @@ export async function settleLoan(id: string) {
   const loan = await Loan.findOneAndUpdate(
     { _id: id, userId },
     { $set: { status: "settled", remainingAmount: 0 } },
-    { new: true }
+    { new: true },
   ).lean();
 
   if (!loan) throw new Error("Loan not found");
+
+  revalidatePath("/");
+  revalidatePath("/finance");
+
+  return JSON.parse(JSON.stringify(loan));
+}
+
+export async function recordLoanPayment(id: string, rawAmount: unknown) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const amount = Number(rawAmount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Payment amount must be greater than 0");
+  }
+
+  await connectToDatabase();
+
+  const loan = await Loan.findOneAndUpdate(
+    {
+      _id: id,
+      userId,
+      status: { $ne: "settled" },
+      remainingAmount: { $gte: amount },
+    },
+    [
+      {
+        $set: { remainingAmount: { $subtract: ["$remainingAmount", amount] } },
+      },
+      {
+        $set: {
+          status: {
+            $cond: [
+              { $eq: ["$remainingAmount", 0] },
+              "settled",
+              "partially_paid",
+            ],
+          },
+        },
+      },
+    ],
+    { new: true },
+  ).lean();
+
+  if (!loan) {
+    throw new Error(
+      "Payment exceeds the remaining loan amount or loan was not found",
+    );
+  }
 
   revalidatePath("/");
   revalidatePath("/finance");

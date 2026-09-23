@@ -51,6 +51,7 @@ import {
   getInvestmentStats,
   getLoans,
   createLoan,
+  recordLoanPayment,
   settleLoan,
   deleteLoan,
   getLoanStats,
@@ -160,7 +161,9 @@ export default function FinancePage() {
   const [invAssetType, setInvAssetType] = useState("savings_certificate");
   const [invAmountInvested, setInvAmountInvested] = useState<number>(0);
   const [invCurrentValue, setInvCurrentValue] = useState<number>(0);
-  const [invStartDate, setInvStartDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [invStartDate, setInvStartDate] = useState(
+    format(new Date(), "yyyy-MM-dd"),
+  );
   const [invNotes, setInvNotes] = useState("");
 
   // ── Loans state
@@ -171,6 +174,9 @@ export default function FinancePage() {
     activeCount: 0,
   });
   const [loanModalOpen, setLoanModalOpen] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [selectedLoan, setSelectedLoan] = useState<ILoan | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [loanType, setLoanType] = useState<"lent" | "borrowed">("lent");
   const [loanCounterparty, setLoanCounterparty] = useState("");
   const [loanPrincipal, setLoanPrincipal] = useState<number>(0);
@@ -219,7 +225,8 @@ export default function FinancePage() {
   // ── Expense handlers
   const handleCreateExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!expAmount || expAmount <= 0) return toast.error("Enter a valid amount");
+    if (!expAmount || expAmount <= 0)
+      return toast.error("Enter a valid amount");
 
     startTransition(async () => {
       try {
@@ -266,7 +273,8 @@ export default function FinancePage() {
   const handleCreateInvestment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!invTitle.trim()) return toast.error("Title is required");
-    if (!invAmountInvested || invAmountInvested <= 0) return toast.error("Enter invested amount");
+    if (!invAmountInvested || invAmountInvested <= 0)
+      return toast.error("Enter invested amount");
 
     startTransition(async () => {
       try {
@@ -312,8 +320,10 @@ export default function FinancePage() {
   // ── Loan handlers
   const handleCreateLoan = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loanCounterparty.trim()) return toast.error("Counterparty is required");
-    if (!loanPrincipal || loanPrincipal <= 0) return toast.error("Enter principal amount");
+    if (!loanCounterparty.trim())
+      return toast.error("Counterparty is required");
+    if (!loanPrincipal || loanPrincipal <= 0)
+      return toast.error("Enter principal amount");
 
     startTransition(async () => {
       try {
@@ -343,6 +353,35 @@ export default function FinancePage() {
         loadData();
       } catch {
         toast.error("Failed to settle");
+      }
+    });
+  };
+
+  const handleRecordPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedLoan || !paymentAmount || paymentAmount <= 0) {
+      return toast.error("Enter a valid payment amount");
+    }
+    if (paymentAmount > selectedLoan.remainingAmount) {
+      return toast.error("Payment cannot exceed the remaining amount");
+    }
+
+    startTransition(async () => {
+      try {
+        await recordLoanPayment(selectedLoan._id, paymentAmount);
+        toast.success(
+          selectedLoan.type === "borrowed"
+            ? "Payment recorded"
+            : "Collection recorded",
+        );
+        setPaymentModalOpen(false);
+        setSelectedLoan(null);
+        setPaymentAmount(0);
+        loadData();
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to record payment",
+        );
       }
     });
   };
@@ -379,7 +418,7 @@ export default function FinancePage() {
       ? Math.round(
           ((expenseStats.thisMonthTotal - expenseStats.lastMonthTotal) /
             expenseStats.lastMonthTotal) *
-            100
+            100,
         )
       : 0;
 
@@ -416,8 +455,8 @@ export default function FinancePage() {
             {activeTab === "expenses"
               ? "Log Expense"
               : activeTab === "investments"
-              ? "Add Investment"
-              : "Record Loan"}
+                ? "Add Investment"
+                : "Record Loan"}
           </span>
           <span className="sm:hidden">Add</span>
         </Button>
@@ -442,10 +481,11 @@ export default function FinancePage() {
               <p
                 className={cn(
                   "text-[10px] font-medium mt-0.5",
-                  changePercent > 0 ? "text-rose-500" : "text-emerald-500"
+                  changePercent > 0 ? "text-rose-500" : "text-emerald-500",
                 )}
               >
-                {changePercent > 0 ? "↑" : "↓"} {Math.abs(changePercent)}% vs last month
+                {changePercent > 0 ? "↑" : "↓"} {Math.abs(changePercent)}% vs
+                last month
               </p>
             )}
           </CardContent>
@@ -502,9 +542,7 @@ export default function FinancePage() {
             <p className="text-lg font-bold text-foreground">
               {formatMoney(loanStats.totalBorrowed)}
             </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">
-              payable
-            </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">payable</p>
           </CardContent>
         </Card>
       </div>
@@ -519,7 +557,7 @@ export default function FinancePage() {
               "flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold transition-all",
               activeTab === key
                 ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             <Icon className="w-3.5 h-3.5" />
@@ -548,15 +586,20 @@ export default function FinancePage() {
                 </h3>
                 <div className="space-y-2">
                   {expenseStats.byCategory.slice(0, 6).map((cat) => {
-                    const pct = expenseStats.thisMonthTotal > 0
-                      ? Math.round((cat.amount / expenseStats.thisMonthTotal) * 100)
-                      : 0;
+                    const pct =
+                      expenseStats.thisMonthTotal > 0
+                        ? Math.round(
+                            (cat.amount / expenseStats.thisMonthTotal) * 100,
+                          )
+                        : 0;
                     return (
                       <div key={cat.category} className="space-y-1">
                         <div className="flex items-center justify-between text-[11px]">
                           <span className="font-medium text-foreground flex items-center gap-1.5">
                             <span>{getCategoryEmoji(cat.category)}</span>
-                            {EXPENSE_CATEGORIES.find((c) => c.value === cat.category)?.label || cat.category}
+                            {EXPENSE_CATEGORIES.find(
+                              (c) => c.value === cat.category,
+                            )?.label || cat.category}
                           </span>
                           <span className="text-muted-foreground font-semibold">
                             {formatMoney(cat.amount)} ({pct}%)
@@ -583,7 +626,9 @@ export default function FinancePage() {
                 <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-3">
                   <Receipt className="w-7 h-7 text-rose-400" />
                 </div>
-                <p className="text-sm font-semibold text-foreground">No expenses logged</p>
+                <p className="text-sm font-semibold text-foreground">
+                  No expenses logged
+                </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Start tracking your spending
                 </p>
@@ -613,15 +658,21 @@ export default function FinancePage() {
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-foreground truncate">
                           {exp.description ||
-                            EXPENSE_CATEGORIES.find((c) => c.value === exp.category)?.label ||
+                            EXPENSE_CATEGORIES.find(
+                              (c) => c.value === exp.category,
+                            )?.label ||
                             exp.category}
                         </p>
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
-                          <span>{format(new Date(exp.date), "dd MMM yyyy")}</span>
+                          <span>
+                            {format(new Date(exp.date), "dd MMM yyyy")}
+                          </span>
                           {exp.paymentMethod && (
                             <>
                               <span className="w-0.5 h-0.5 rounded-full bg-muted-foreground/40" />
-                              <span className="capitalize">{exp.paymentMethod.replace("_", " ")}</span>
+                              <span className="capitalize">
+                                {exp.paymentMethod.replace("_", " ")}
+                              </span>
                             </>
                           )}
                         </div>
@@ -660,19 +711,29 @@ export default function FinancePage() {
                 </h3>
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div>
-                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">Invested</p>
-                    <p className="text-sm font-bold text-foreground">{formatMoney(investStats.totalInvested)}</p>
+                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">
+                      Invested
+                    </p>
+                    <p className="text-sm font-bold text-foreground">
+                      {formatMoney(investStats.totalInvested)}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">Current</p>
-                    <p className="text-sm font-bold text-foreground">{formatMoney(investStats.currentValue)}</p>
+                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">
+                      Current
+                    </p>
+                    <p className="text-sm font-bold text-foreground">
+                      {formatMoney(investStats.currentValue)}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">Gain/Loss</p>
+                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">
+                      Gain/Loss
+                    </p>
                     <p
                       className={cn(
                         "text-sm font-bold",
-                        investGain >= 0 ? "text-emerald-500" : "text-rose-500"
+                        investGain >= 0 ? "text-emerald-500" : "text-rose-500",
                       )}
                     >
                       {investGain >= 0 ? "+" : ""}
@@ -690,7 +751,9 @@ export default function FinancePage() {
                 <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-3">
                   <PiggyBank className="w-7 h-7 text-emerald-400" />
                 </div>
-                <p className="text-sm font-semibold text-foreground">No investments tracked</p>
+                <p className="text-sm font-semibold text-foreground">
+                  No investments tracked
+                </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Start building your portfolio tracker
                 </p>
@@ -708,7 +771,8 @@ export default function FinancePage() {
           ) : (
             <div className="space-y-2">
               {investments.map((inv) => {
-                const gain = (inv.currentValue ?? inv.amountInvested) - inv.amountInvested;
+                const gain =
+                  (inv.currentValue ?? inv.amountInvested) - inv.amountInvested;
                 const gainPct =
                   inv.amountInvested > 0
                     ? Math.round((gain / inv.amountInvested) * 100)
@@ -729,22 +793,28 @@ export default function FinancePage() {
                           </p>
                           <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
                             <span className="capitalize">
-                              {ASSET_TYPES.find((a) => a.value === inv.assetType)?.label || inv.assetType}
+                              {ASSET_TYPES.find(
+                                (a) => a.value === inv.assetType,
+                              )?.label || inv.assetType}
                             </span>
                             <span className="w-0.5 h-0.5 rounded-full bg-muted-foreground/40" />
-                            <span>{format(new Date(inv.startDate), "dd MMM yyyy")}</span>
+                            <span>
+                              {format(new Date(inv.startDate), "dd MMM yyyy")}
+                            </span>
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="text-right">
                           <p className="text-sm font-bold text-foreground">
-                            {formatMoney(inv.currentValue ?? inv.amountInvested)}
+                            {formatMoney(
+                              inv.currentValue ?? inv.amountInvested,
+                            )}
                           </p>
                           <p
                             className={cn(
                               "text-[10px] font-semibold",
-                              gain >= 0 ? "text-emerald-500" : "text-rose-500"
+                              gain >= 0 ? "text-emerald-500" : "text-rose-500",
                             )}
                           >
                             {gain >= 0 ? "+" : ""}
@@ -781,24 +851,36 @@ export default function FinancePage() {
                 </h3>
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div>
-                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">Lent</p>
-                    <p className="text-sm font-bold text-blue-500">{formatMoney(loanStats.totalLent)}</p>
+                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">
+                      Lent
+                    </p>
+                    <p className="text-sm font-bold text-blue-500">
+                      {formatMoney(loanStats.totalLent)}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">Borrowed</p>
-                    <p className="text-sm font-bold text-amber-500">{formatMoney(loanStats.totalBorrowed)}</p>
+                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">
+                      Borrowed
+                    </p>
+                    <p className="text-sm font-bold text-amber-500">
+                      {formatMoney(loanStats.totalBorrowed)}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">Net</p>
+                    <p className="text-[10px] text-muted-foreground font-semibold uppercase">
+                      Net
+                    </p>
                     <p
                       className={cn(
                         "text-sm font-bold",
                         loanStats.totalLent - loanStats.totalBorrowed >= 0
                           ? "text-emerald-500"
-                          : "text-rose-500"
+                          : "text-rose-500",
                       )}
                     >
-                      {formatMoney(Math.abs(loanStats.totalLent - loanStats.totalBorrowed))}
+                      {formatMoney(
+                        Math.abs(loanStats.totalLent - loanStats.totalBorrowed),
+                      )}
                     </p>
                   </div>
                 </div>
@@ -812,7 +894,9 @@ export default function FinancePage() {
                 <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-3">
                   <Handshake className="w-7 h-7 text-blue-400" />
                 </div>
-                <p className="text-sm font-semibold text-foreground">No loans tracked</p>
+                <p className="text-sm font-semibold text-foreground">
+                  No loans tracked
+                </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Track money you&apos;ve lent or borrowed
                 </p>
@@ -835,7 +919,7 @@ export default function FinancePage() {
                     ? Math.round(
                         ((loan.principalAmount - loan.remainingAmount) /
                           loan.principalAmount) *
-                          100
+                          100,
                       )
                     : 0;
                 return (
@@ -843,7 +927,7 @@ export default function FinancePage() {
                     key={loan._id}
                     className={cn(
                       "border-border/60 bg-card/80 hover:border-primary/30 transition-colors",
-                      loan.status === "settled" && "opacity-60"
+                      loan.status === "settled" && "opacity-60",
                     )}
                   >
                     <CardContent className="p-3.5">
@@ -854,7 +938,7 @@ export default function FinancePage() {
                               "w-10 h-10 rounded-xl border flex items-center justify-center shrink-0",
                               loan.type === "lent"
                                 ? "bg-blue-500/10 border-blue-500/20"
-                                : "bg-amber-500/10 border-amber-500/20"
+                                : "bg-amber-500/10 border-amber-500/20",
                             )}
                           >
                             {loan.type === "lent" ? (
@@ -871,7 +955,9 @@ export default function FinancePage() {
                               <span
                                 className={cn(
                                   "font-semibold uppercase",
-                                  loan.type === "lent" ? "text-blue-500" : "text-amber-500"
+                                  loan.type === "lent"
+                                    ? "text-blue-500"
+                                    : "text-amber-500",
                                 )}
                               >
                                 {loan.type}
@@ -879,7 +965,13 @@ export default function FinancePage() {
                               {loan.dueDate && (
                                 <>
                                   <span className="w-0.5 h-0.5 rounded-full bg-muted-foreground/40" />
-                                  <span>Due {format(new Date(loan.dueDate), "dd MMM yyyy")}</span>
+                                  <span>
+                                    Due{" "}
+                                    {format(
+                                      new Date(loan.dueDate),
+                                      "dd MMM yyyy",
+                                    )}
+                                  </span>
                                 </>
                               )}
                               <span
@@ -888,8 +980,8 @@ export default function FinancePage() {
                                   loan.status === "settled"
                                     ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                                     : loan.status === "partially_paid"
-                                    ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                                    : "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                                      ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                      : "bg-blue-500/10 text-blue-500 border-blue-500/20",
                                 )}
                               >
                                 {loan.status.replace("_", " ")}
@@ -914,7 +1006,7 @@ export default function FinancePage() {
                             "h-full rounded-full transition-all",
                             loan.status === "settled"
                               ? "bg-emerald-500"
-                              : "bg-gradient-to-r from-primary to-primary/60"
+                              : "bg-gradient-to-r from-primary to-primary/60",
                           )}
                           style={{ width: `${progress}%` }}
                         />
@@ -923,16 +1015,32 @@ export default function FinancePage() {
                       {/* Actions */}
                       <div className="flex items-center justify-end gap-1">
                         {loan.status !== "settled" && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleSettleLoan(loan._id)}
-                            className="h-7 text-[10px] text-emerald-500 hover:text-emerald-600 hover:bg-emerald-500/10 gap-1"
-                            disabled={isPending}
-                          >
-                            <CheckCircle2 className="w-3 h-3" />
-                            Settle
-                          </Button>
+                          <>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setSelectedLoan(loan);
+                                setPaymentAmount(0);
+                                setPaymentModalOpen(true);
+                              }}
+                              className="h-7 text-[10px] text-primary hover:text-primary hover:bg-primary/10 gap-1"
+                              disabled={isPending}
+                            >
+                              <CircleDollarSign className="w-3 h-3" />
+                              {loan.type === "borrowed" ? "Pay" : "Receive"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleSettleLoan(loan._id)}
+                              className="h-7 text-[10px] text-emerald-500 hover:text-emerald-600 hover:bg-emerald-500/10 gap-1"
+                              disabled={isPending}
+                            >
+                              <CheckCircle2 className="w-3 h-3" />
+                              Settle
+                            </Button>
+                          </>
                         )}
                         <Button
                           size="sm"
@@ -958,7 +1066,9 @@ export default function FinancePage() {
       <Dialog open={expenseModalOpen} onOpenChange={setExpenseModalOpen}>
         <DialogContent className="sm:max-w-md border-border bg-card/95 backdrop-blur-xl">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold">Log Expense</DialogTitle>
+            <DialogTitle className="text-base font-bold">
+              Log Expense
+            </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
               Record a personal or business expense.
             </DialogDescription>
@@ -973,7 +1083,11 @@ export default function FinancePage() {
                   </SelectTrigger>
                   <SelectContent>
                     {EXPENSE_CATEGORIES.map((c) => (
-                      <SelectItem key={c.value} value={c.value} className="text-xs">
+                      <SelectItem
+                        key={c.value}
+                        value={c.value}
+                        className="text-xs"
+                      >
                         {getCategoryEmoji(c.value)} {c.label}
                       </SelectItem>
                     ))}
@@ -981,7 +1095,9 @@ export default function FinancePage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Amount ({CURRENCY_SYMBOL})</Label>
+                <Label className="text-xs font-semibold">
+                  Amount ({CURRENCY_SYMBOL})
+                </Label>
                 <Input
                   type="number"
                   min={0}
@@ -1006,13 +1122,20 @@ export default function FinancePage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Payment Method</Label>
-                <Select value={expPaymentMethod} onValueChange={setExpPaymentMethod}>
+                <Select
+                  value={expPaymentMethod}
+                  onValueChange={setExpPaymentMethod}
+                >
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {PAYMENT_METHODS.map((m) => (
-                      <SelectItem key={m.value} value={m.value} className="text-xs">
+                      <SelectItem
+                        key={m.value}
+                        value={m.value}
+                        className="text-xs"
+                      >
                         {m.label}
                       </SelectItem>
                     ))}
@@ -1022,7 +1145,9 @@ export default function FinancePage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Description (optional)</Label>
+              <Label className="text-xs font-semibold">
+                Description (optional)
+              </Label>
               <Input
                 value={expDescription}
                 onChange={(e) => setExpDescription(e.target.value)}
@@ -1031,9 +1156,68 @@ export default function FinancePage() {
               />
             </div>
 
-            <Button type="submit" className="w-full gap-1.5" disabled={isPending}>
+            <Button
+              type="submit"
+              className="w-full gap-1.5"
+              disabled={isPending}
+            >
               <Receipt className="w-4 h-4" />
               Record Expense
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── PAYMENT MODAL ─── */}
+      <Dialog
+        open={paymentModalOpen}
+        onOpenChange={(open) => {
+          setPaymentModalOpen(open);
+          if (!open) setSelectedLoan(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md border-border bg-card/95 backdrop-blur-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold">
+              {selectedLoan?.type === "borrowed"
+                ? "Record Loan Payment"
+                : "Record Loan Collection"}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              {selectedLoan && (
+                <>
+                  {selectedLoan.counterparty} has{" "}
+                  {formatMoney(selectedLoan.remainingAmount)} remaining.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleRecordPayment} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">
+                Amount ({CURRENCY_SYMBOL})
+              </Label>
+              <Input
+                type="number"
+                min={0}
+                max={selectedLoan?.remainingAmount}
+                step={0.01}
+                value={paymentAmount || ""}
+                onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                placeholder="0"
+                className="h-9 text-xs"
+                autoFocus
+              />
+            </div>
+            <Button
+              type="submit"
+              className="w-full gap-1.5"
+              disabled={isPending}
+            >
+              <CircleDollarSign className="w-4 h-4" />
+              {selectedLoan?.type === "borrowed"
+                ? "Record Payment"
+                : "Record Collection"}
             </Button>
           </form>
         </DialogContent>
@@ -1043,7 +1227,9 @@ export default function FinancePage() {
       <Dialog open={investModalOpen} onOpenChange={setInvestModalOpen}>
         <DialogContent className="sm:max-w-md border-border bg-card/95 backdrop-blur-xl">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold">Add Investment</DialogTitle>
+            <DialogTitle className="text-base font-bold">
+              Add Investment
+            </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
               Track a new investment in your portfolio.
             </DialogDescription>
@@ -1068,7 +1254,11 @@ export default function FinancePage() {
                   </SelectTrigger>
                   <SelectContent>
                     {ASSET_TYPES.map((a) => (
-                      <SelectItem key={a.value} value={a.value} className="text-xs">
+                      <SelectItem
+                        key={a.value}
+                        value={a.value}
+                        className="text-xs"
+                      >
                         {getAssetIcon(a.value)} {a.label}
                       </SelectItem>
                     ))}
@@ -1088,7 +1278,9 @@ export default function FinancePage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Amount Invested ({CURRENCY_SYMBOL})</Label>
+                <Label className="text-xs font-semibold">
+                  Amount Invested ({CURRENCY_SYMBOL})
+                </Label>
                 <Input
                   type="number"
                   min={0}
@@ -1100,7 +1292,9 @@ export default function FinancePage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Current Value ({CURRENCY_SYMBOL})</Label>
+                <Label className="text-xs font-semibold">
+                  Current Value ({CURRENCY_SYMBOL})
+                </Label>
                 <Input
                   type="number"
                   min={0}
@@ -1123,7 +1317,11 @@ export default function FinancePage() {
               />
             </div>
 
-            <Button type="submit" className="w-full gap-1.5" disabled={isPending}>
+            <Button
+              type="submit"
+              className="w-full gap-1.5"
+              disabled={isPending}
+            >
               <PiggyBank className="w-4 h-4" />
               Add Investment
             </Button>
@@ -1135,7 +1333,9 @@ export default function FinancePage() {
       <Dialog open={loanModalOpen} onOpenChange={setLoanModalOpen}>
         <DialogContent className="sm:max-w-md border-border bg-card/95 backdrop-blur-xl">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold">Record Loan</DialogTitle>
+            <DialogTitle className="text-base font-bold">
+              Record Loan
+            </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
               Track money you&apos;ve lent or borrowed.
             </DialogDescription>
@@ -1174,7 +1374,9 @@ export default function FinancePage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Principal ({CURRENCY_SYMBOL})</Label>
+                <Label className="text-xs font-semibold">
+                  Principal ({CURRENCY_SYMBOL})
+                </Label>
                 <Input
                   type="number"
                   min={0}
@@ -1190,7 +1392,9 @@ export default function FinancePage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Remaining ({CURRENCY_SYMBOL})</Label>
+                <Label className="text-xs font-semibold">
+                  Remaining ({CURRENCY_SYMBOL})
+                </Label>
                 <Input
                   type="number"
                   min={0}
@@ -1204,7 +1408,9 @@ export default function FinancePage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Due Date (optional)</Label>
+              <Label className="text-xs font-semibold">
+                Due Date (optional)
+              </Label>
               <Input
                 type="date"
                 value={loanDueDate}
@@ -1223,7 +1429,11 @@ export default function FinancePage() {
               />
             </div>
 
-            <Button type="submit" className="w-full gap-1.5" disabled={isPending}>
+            <Button
+              type="submit"
+              className="w-full gap-1.5"
+              disabled={isPending}
+            >
               <Handshake className="w-4 h-4" />
               Record Loan
             </Button>
