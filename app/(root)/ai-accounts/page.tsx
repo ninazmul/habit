@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Play,
+  Pencil,
   Trash2,
   Flame,
   Sparkles,
@@ -44,8 +45,9 @@ import {
   switchActiveAccount,
   resetAccountCooldown,
   deleteAIAccount,
+  updateAIAccount,
 } from "@/lib/actions/ai-account.actions";
-import { IAIAccount, AIAccountTier, AIAccountStatus } from "@/types/habit";
+import { IAIAccount, AIAccountTier } from "@/types/habit";
 import toast from "react-hot-toast";
 import { cn } from "@/lib/utils";
 
@@ -84,7 +86,11 @@ function formatCooldownDuration(totalMinutes: number) {
   return parts.length ? parts.join(" ") : "0m";
 }
 
-function CooldownCountdown({ cooldownUntil }: { cooldownUntil?: string | Date }) {
+function CooldownCountdown({
+  cooldownUntil,
+}: {
+  cooldownUntil?: string | Date;
+}) {
   const [timeLeft, setTimeLeft] = useState<string>("");
 
   useEffect(() => {
@@ -101,11 +107,17 @@ function CooldownCountdown({ cooldownUntil }: { cooldownUntil?: string | Date })
       }
 
       const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const hours = Math.floor(
+        (diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
+      );
       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
       const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
-      setTimeLeft(days ? `${days}d ${hours}h ${minutes}m` : `${hours}h ${minutes}m ${seconds}s`);
+      setTimeLeft(
+        days
+          ? `${days}d ${hours}h ${minutes}m`
+          : `${hours}h ${minutes}m ${seconds}s`,
+      );
     };
 
     updateTimer();
@@ -117,7 +129,10 @@ function CooldownCountdown({ cooldownUntil }: { cooldownUntil?: string | Date })
 
   return (
     <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20 text-xs font-mono font-medium">
-      <Clock className="w-3 h-3 animate-spin" style={{ animationDuration: "6s" }} />
+      <Clock
+        className="w-3 h-3 animate-spin"
+        style={{ animationDuration: "6s" }}
+      />
       <span>{timeLeft}</span>
     </div>
   );
@@ -125,19 +140,51 @@ function CooldownCountdown({ cooldownUntil }: { cooldownUntil?: string | Date })
 
 export default function AIAccountsPage() {
   const [accounts, setAccounts] = useState<IAIAccount[]>([]);
-  const [summary, setSummary] = useState({ total: 0, ready: 0, inUse: 0, coolingDown: 0 });
+  const [summary, setSummary] = useState({
+    total: 0,
+    ready: 0,
+    inUse: 0,
+    coolingDown: 0,
+  });
   const [activeService, setActiveService] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
 
   // Create Modal
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<IAIAccount | null>(null);
   const [service, setService] = useState("chatgpt");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [tier, setTier] = useState<AIAccountTier>("pro");
   const [cooldownMinutes, setCooldownMinutes] = useState(180);
   const [notes, setNotes] = useState("");
+
+  const resetForm = () => {
+    setEditingAccount(null);
+    setService("chatgpt");
+    setName("");
+    setEmail("");
+    setTier("pro");
+    setCooldownMinutes(180);
+    setNotes("");
+  };
+
+  const openCreateModal = () => {
+    resetForm();
+    setModalOpen(true);
+  };
+
+  const openEditModal = (account: IAIAccount) => {
+    setEditingAccount(account);
+    setService(account.service);
+    setName(account.name);
+    setEmail(account.email ?? "");
+    setTier(account.tier);
+    setCooldownMinutes(account.cooldownDurationMinutes);
+    setNotes(account.notes ?? "");
+    setModalOpen(true);
+  };
 
   const loadData = async () => {
     try {
@@ -160,29 +207,38 @@ export default function AIAccountsPage() {
     loadData();
   }, [activeService]);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return toast.error("Please provide an account name");
 
     startTransition(async () => {
       try {
-        await createAIAccount({
+        const accountDetails = {
           service,
           name: name.trim(),
-          email: email.trim() || undefined,
+          email: email.trim(),
           tier,
           cooldownDurationMinutes: cooldownMinutes,
-          notes: notes.trim() || undefined,
-        });
+          notes: notes.trim(),
+        };
 
-        toast.success("AI Account registered");
+        if (editingAccount) {
+          await updateAIAccount(editingAccount._id, accountDetails);
+          toast.success("AI Account updated");
+        } else {
+          await createAIAccount(accountDetails);
+          toast.success("AI Account registered");
+        }
+
         setModalOpen(false);
-        setName("");
-        setEmail("");
-        setNotes("");
+        resetForm();
         loadData();
       } catch (err) {
-        toast.error("Failed to create account");
+        toast.error(
+          editingAccount
+            ? "Failed to update account"
+            : "Failed to create account",
+        );
       }
     });
   };
@@ -191,7 +247,7 @@ export default function AIAccountsPage() {
     try {
       await markAccountExhausted(account._id, account.cooldownDurationMinutes);
       toast.success(
-        `${account.name} entered cooldown (${formatCooldownDuration(account.cooldownDurationMinutes)})`
+        `${account.name} entered cooldown (${formatCooldownDuration(account.cooldownDurationMinutes)})`,
       );
       loadData();
     } catch (err) {
@@ -237,14 +293,17 @@ export default function AIAccountsPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">AI Accounts & Cooldown Queue</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            AI Accounts & Cooldown Queue
+          </h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Rotate ChatGPT, Claude, Cursor & Gemini accounts seamlessly to avoid hitting rate limits.
+            Rotate ChatGPT, Claude, Cursor & Gemini accounts seamlessly to avoid
+            hitting rate limits.
           </p>
         </div>
 
         <Button
-          onClick={() => setModalOpen(true)}
+          onClick={openCreateModal}
           className="rounded-xl gap-1.5 shadow-sm shadow-primary/25 h-9"
         >
           <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -255,20 +314,34 @@ export default function AIAccountsPage() {
       {/* Summary Stat Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="p-3.5 rounded-xl border border-border bg-card/60">
-          <p className="text-[11px] font-medium text-muted-foreground">Total Accounts</p>
+          <p className="text-[11px] font-medium text-muted-foreground">
+            Total Accounts
+          </p>
           <p className="text-xl font-bold mt-0.5">{summary.total}</p>
         </div>
         <div className="p-3.5 rounded-xl border border-border bg-card/60">
-          <p className="text-[11px] font-medium text-muted-foreground">Ready to Use</p>
-          <p className="text-xl font-bold text-emerald-500 mt-0.5">{summary.ready}</p>
+          <p className="text-[11px] font-medium text-muted-foreground">
+            Ready to Use
+          </p>
+          <p className="text-xl font-bold text-emerald-500 mt-0.5">
+            {summary.ready}
+          </p>
         </div>
         <div className="p-3.5 rounded-xl border border-border bg-card/60">
-          <p className="text-[11px] font-medium text-muted-foreground">Currently Active</p>
-          <p className="text-xl font-bold text-blue-500 mt-0.5">{summary.inUse}</p>
+          <p className="text-[11px] font-medium text-muted-foreground">
+            Currently Active
+          </p>
+          <p className="text-xl font-bold text-blue-500 mt-0.5">
+            {summary.inUse}
+          </p>
         </div>
         <div className="p-3.5 rounded-xl border border-border bg-card/60">
-          <p className="text-[11px] font-medium text-muted-foreground">In Cooldown</p>
-          <p className="text-xl font-bold text-amber-500 mt-0.5">{summary.coolingDown}</p>
+          <p className="text-[11px] font-medium text-muted-foreground">
+            In Cooldown
+          </p>
+          <p className="text-xl font-bold text-amber-500 mt-0.5">
+            {summary.coolingDown}
+          </p>
         </div>
       </div>
 
@@ -282,7 +355,7 @@ export default function AIAccountsPage() {
               "px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0",
               activeService === svc.id
                 ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
             )}
           >
             {svc.label}
@@ -299,13 +372,16 @@ export default function AIAccountsPage() {
         ) : accounts.length === 0 ? (
           <div className="col-span-full py-16 text-center border border-dashed rounded-2xl border-border/80">
             <Cpu className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
-            <h3 className="text-sm font-semibold text-foreground">No AI accounts found</h3>
+            <h3 className="text-sm font-semibold text-foreground">
+              No AI accounts found
+            </h3>
             <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
-              Add multiple ChatGPT, Claude or Cursor accounts to automatically rotate quotas and manage cooldowns.
+              Add multiple ChatGPT, Claude or Cursor accounts to automatically
+              rotate quotas and manage cooldowns.
             </p>
             <Button
               size="sm"
-              onClick={() => setModalOpen(true)}
+              onClick={openCreateModal}
               className="mt-4 rounded-xl text-xs"
             >
               <Plus className="w-3.5 h-3.5 mr-1" />
@@ -325,7 +401,7 @@ export default function AIAccountsPage() {
                   "relative border transition-all overflow-hidden",
                   isInUse && "border-blue-500/60 shadow-md shadow-blue-500/10",
                   isCooling && "border-amber-500/50 bg-amber-500/5",
-                  isReady && "border-border/80 hover:border-emerald-500/50"
+                  isReady && "border-border/80 hover:border-emerald-500/50",
                 )}
               >
                 <CardContent className="p-4 space-y-3.5">
@@ -335,12 +411,17 @@ export default function AIAccountsPage() {
                       <div
                         className={cn(
                           "w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs uppercase shrink-0",
-                          acc.service === "chatgpt" && "bg-emerald-500/15 text-emerald-500",
-                          acc.service === "claude" && "bg-orange-500/15 text-orange-500",
-                          acc.service === "cursor" && "bg-blue-500/15 text-blue-500",
-                          acc.service === "gemini" && "bg-purple-500/15 text-purple-500",
-                          !["chatgpt", "claude", "cursor", "gemini"].includes(acc.service) &&
-                            "bg-secondary text-foreground"
+                          acc.service === "chatgpt" &&
+                            "bg-emerald-500/15 text-emerald-500",
+                          acc.service === "claude" &&
+                            "bg-orange-500/15 text-orange-500",
+                          acc.service === "cursor" &&
+                            "bg-blue-500/15 text-blue-500",
+                          acc.service === "gemini" &&
+                            "bg-purple-500/15 text-purple-500",
+                          !["chatgpt", "claude", "cursor", "gemini"].includes(
+                            acc.service,
+                          ) && "bg-secondary text-foreground",
                         )}
                       >
                         {acc.service.slice(0, 2)}
@@ -354,7 +435,9 @@ export default function AIAccountsPage() {
                             {acc.service}
                           </span>
                           <span>&middot;</span>
-                          <span className="capitalize font-medium">{acc.tier}</span>
+                          <span className="capitalize font-medium">
+                            {acc.tier}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -393,7 +476,9 @@ export default function AIAccountsPage() {
                   {/* Cooldown Timer */}
                   {isCooling && acc.cooldownUntil && (
                     <div className="p-2.5 rounded-xl bg-card border border-amber-500/20 flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Reset In:</span>
+                      <span className="text-xs text-muted-foreground">
+                        Reset In:
+                      </span>
                       <CooldownCountdown cooldownUntil={acc.cooldownUntil} />
                     </div>
                   )}
@@ -441,8 +526,19 @@ export default function AIAccountsPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      onClick={() => openEditModal(acc)}
+                      className="h-8 w-8 text-muted-foreground hover:text-primary"
+                      aria-label={`Edit ${acc.name}`}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => handleDelete(acc._id)}
                       className="h-8 w-8 text-muted-foreground hover:text-red-500"
+                      aria-label={`Delete ${acc.name}`}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
@@ -455,16 +551,26 @@ export default function AIAccountsPage() {
       </div>
 
       {/* Registration Dialog */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+      <Dialog
+        open={modalOpen}
+        onOpenChange={(open) => {
+          setModalOpen(open);
+          if (!open) resetForm();
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Register AI Account</DialogTitle>
+            <DialogTitle>
+              {editingAccount ? "Edit AI Account" : "Register AI Account"}
+            </DialogTitle>
             <DialogDescription className="text-xs">
-              Add account details for rotation tracking and quota cooldowns.
+              {editingAccount
+                ? "Update account details used for rotation tracking and quota cooldowns."
+                : "Add account details for rotation tracking and quota cooldowns."}
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleCreate} className="space-y-3.5 pt-2">
+          <form onSubmit={handleSubmit} className="space-y-3.5 pt-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">AI Service</Label>
@@ -486,7 +592,10 @@ export default function AIAccountsPage() {
 
               <div className="space-y-1.5">
                 <Label className="text-xs">Tier</Label>
-                <Select value={tier} onValueChange={(v) => setTier(v as AIAccountTier)}>
+                <Select
+                  value={tier}
+                  onValueChange={(v) => setTier(v as AIAccountTier)}
+                >
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -513,7 +622,9 @@ export default function AIAccountsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs">Login Email (Optional reference)</Label>
+              <Label className="text-xs">
+                Login Email (Optional reference)
+              </Label>
               <Input
                 type="email"
                 value={email}
@@ -524,7 +635,9 @@ export default function AIAccountsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs">Cooldown Window (Minutes after limit)</Label>
+              <Label className="text-xs">
+                Cooldown Window (Minutes after limit)
+              </Label>
               <Select
                 value={String(cooldownMinutes)}
                 onValueChange={(v) => setCooldownMinutes(Number(v))}
@@ -543,7 +656,9 @@ export default function AIAccountsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs">Notes / Limits / Key instructions</Label>
+              <Label className="text-xs">
+                Notes / Limits / Key instructions
+              </Label>
               <Textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
@@ -562,8 +677,17 @@ export default function AIAccountsPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={isPending} className="text-xs">
-                {isPending ? "Saving..." : "Save Account"}
+              <Button
+                type="submit"
+                size="sm"
+                disabled={isPending}
+                className="text-xs"
+              >
+                {isPending
+                  ? "Saving..."
+                  : editingAccount
+                    ? "Update Account"
+                    : "Save Account"}
               </Button>
             </div>
           </form>
