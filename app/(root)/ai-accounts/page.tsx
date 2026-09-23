@@ -59,6 +59,31 @@ const servicesList = [
   { id: "v0", label: "v0 by Vercel" },
 ];
 
+const cooldownWindowOptions = [
+  { value: 60, label: "1 Hour (60m)" },
+  { value: 120, label: "2 Hours (120m)" },
+  { value: 180, label: "3 Hours (180m - Standard ChatGPT/Claude)" },
+  { value: 240, label: "4 Hours (240m)" },
+  { value: 300, label: "5 Hours (300m - Claude Opus)" },
+  { value: 1440, label: "24 Hours (Daily Reset)" },
+  { value: 10080, label: "7 Days (Weekly Reset)" },
+  { value: 43200, label: "1 Month (30-day Reset)" },
+];
+
+function formatCooldownDuration(totalMinutes: number) {
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+
+  const parts = [
+    days ? `${days}d` : null,
+    hours ? `${hours}h` : null,
+    minutes ? `${minutes}m` : null,
+  ].filter(Boolean);
+
+  return parts.length ? parts.join(" ") : "0m";
+}
+
 function CooldownCountdown({ cooldownUntil }: { cooldownUntil?: string | Date }) {
   const [timeLeft, setTimeLeft] = useState<string>("");
 
@@ -75,11 +100,12 @@ function CooldownCountdown({ cooldownUntil }: { cooldownUntil?: string | Date })
         return;
       }
 
-      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
       const seconds = Math.floor((diff % (1000 * 60)) / 1000);
 
-      setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
+      setTimeLeft(days ? `${days}d ${hours}h ${minutes}m` : `${hours}h ${minutes}m ${seconds}s`);
     };
 
     updateTimer();
@@ -164,7 +190,9 @@ export default function AIAccountsPage() {
   const handleMarkExhausted = async (account: IAIAccount) => {
     try {
       await markAccountExhausted(account._id, account.cooldownDurationMinutes);
-      toast.success(`${account.name} entered cooldown (${account.cooldownDurationMinutes}m)`);
+      toast.success(
+        `${account.name} entered cooldown (${formatCooldownDuration(account.cooldownDurationMinutes)})`
+      );
       loadData();
     } catch (err) {
       toast.error("Failed to mark exhausted");
@@ -505,12 +533,11 @@ export default function AIAccountsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="60">1 Hour (60m)</SelectItem>
-                  <SelectItem value="120">2 Hours (120m)</SelectItem>
-                  <SelectItem value="180">3 Hours (180m - Standard ChatGPT/Claude)</SelectItem>
-                  <SelectItem value="240">4 Hours (240m)</SelectItem>
-                  <SelectItem value="300">5 Hours (300m - Claude Opus)</SelectItem>
-                  <SelectItem value="1440">24 Hours (Daily Reset)</SelectItem>
+                  {cooldownWindowOptions.map((option) => (
+                    <SelectItem key={option.value} value={String(option.value)}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
