@@ -16,10 +16,10 @@ export default async function HabitRootLayout({
   if (!user) redirect("/sign-in");
 
   return (
-    <div className="min-h-screen flex bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground">
       <DesktopSidebar />
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen pb-24 md:pb-8">
+      <div className="min-h-screen flex flex-col min-w-0 pb-24 md:ml-64 md:pb-8">
         <TopNavbar />
         <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6">
           {children}

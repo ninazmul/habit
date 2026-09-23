@@ -18,11 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { motion } from "framer-motion";
-import {
-  APP_NAME,
-  APP_VERSION,
-  APP_TAGLINE,
-} from "@/lib/constants";
+import { APP_NAME, APP_VERSION, APP_TAGLINE } from "@/lib/constants";
 import Image from "next/image";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 
@@ -33,7 +29,12 @@ export const navGroups = [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/tasks", label: "Tasks", icon: CheckSquare },
       { href: "/schedule", label: "Schedule", icon: Calendar },
-      { href: "/ai-accounts", label: "AI Accounts", icon: Cpu, badge: "Rotation" },
+      {
+        href: "/ai-accounts",
+        label: "AI Accounts",
+        icon: Cpu,
+        badge: "Rotation",
+      },
     ],
   },
   {
@@ -68,7 +69,7 @@ export default function DesktopSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden md:flex flex-col w-64 h-screen sticky top-0 border-r border-border bg-card/60 backdrop-blur-xl z-30 shrink-0 select-none">
+    <aside className="hidden md:flex flex-col fixed inset-y-0 left-0 w-64 border-r border-border bg-card/60 backdrop-blur-xl z-30 select-none">
       {/* Brand Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-border/60">
         <Link href="/" className="flex items-center gap-3">
@@ -84,7 +85,9 @@ export default function DesktopSidebar() {
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-base tracking-tight">{APP_NAME}</span>
+              <span className="font-bold text-base tracking-tight">
+                {APP_NAME}
+              </span>
               <span className="rounded-full bg-primary/10 border border-primary/20 px-1.5 py-0.2 text-[9px] font-semibold text-primary">
                 {APP_VERSION}
               </span>
@@ -121,7 +124,14 @@ export default function DesktopSidebar() {
                     )}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <Icon className={cn("w-4 h-4 shrink-0", isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-foreground")} />
+                      <Icon
+                        className={cn(
+                          "w-4 h-4 shrink-0",
+                          isActive
+                            ? "text-primary-foreground"
+                            : "text-muted-foreground group-hover:text-foreground",
+                        )}
+                      />
                       <span className="truncate">{item.label}</span>
                     </div>
 
