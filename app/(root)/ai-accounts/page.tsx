@@ -47,7 +47,7 @@ import {
   deleteAIAccount,
   updateAIAccount,
 } from "@/lib/actions/ai-account.actions";
-import { IAIAccount, AIAccountTier } from "@/types/habit";
+import { IAIAccount, AIAccountStatus, AIAccountTier } from "@/types/habit";
 import toast from "react-hot-toast";
 import { cn } from "@/lib/utils";
 
@@ -84,6 +84,21 @@ function formatCooldownDuration(totalMinutes: number) {
   ].filter(Boolean);
 
   return parts.length ? parts.join(" ") : "0m";
+}
+
+const accountStatusPriority: Record<AIAccountStatus, number> = {
+  ready: 0,
+  in_use: 1,
+  cooling_down: 2,
+  exhausted: 3,
+  disabled: 4,
+};
+
+function cooldownReadyTime(account: IAIAccount) {
+  if (!account.cooldownUntil) return Number.MAX_SAFE_INTEGER;
+
+  const time = new Date(account.cooldownUntil).getTime();
+  return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER : time;
 }
 
 function CooldownCountdown({
@@ -288,6 +303,19 @@ export default function AIAccountsPage() {
     }
   };
 
+  const sortedAccounts = [...accounts].sort((first, second) => {
+    const statusDifference =
+      accountStatusPriority[first.status] - accountStatusPriority[second.status];
+
+    if (statusDifference) return statusDifference;
+
+    if (first.status === "cooling_down") {
+      return cooldownReadyTime(first) - cooldownReadyTime(second);
+    }
+
+    return first.name.localeCompare(second.name);
+  });
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -389,7 +417,7 @@ export default function AIAccountsPage() {
             </Button>
           </div>
         ) : (
-          accounts.map((acc) => {
+          sortedAccounts.map((acc, index) => {
             const isCooling = acc.status === "cooling_down";
             const isInUse = acc.status === "in_use";
             const isReady = acc.status === "ready";
@@ -442,27 +470,32 @@ export default function AIAccountsPage() {
                       </div>
                     </div>
 
-                    {/* Status Pill */}
-                    {isInUse && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20 shrink-0 animate-pulse">
-                        <Zap className="w-3 h-3" />
-                        Active
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="font-mono text-[10px] font-semibold text-muted-foreground">
+                        #{String(index + 1).padStart(2, "0")}
                       </span>
-                    )}
 
-                    {isReady && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 shrink-0">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Ready
-                      </span>
-                    )}
+                      {isInUse && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20 animate-pulse">
+                          <Zap className="w-3 h-3" />
+                          Active
+                        </span>
+                      )}
 
-                    {isCooling && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 shrink-0">
-                        <Clock className="w-3 h-3" />
-                        Cooldown
-                      </span>
-                    )}
+                      {isReady && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Ready
+                        </span>
+                      )}
+
+                      {isCooling && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                          <Clock className="w-3 h-3" />
+                          Cooldown
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Email & Notes */}
