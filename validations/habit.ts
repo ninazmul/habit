@@ -21,7 +21,7 @@ export const AIAccountSchema = z.object({
   name: z.string().min(1, "Account identifier is required"),
   email: z.string().email().optional().or(z.literal("")),
   tier: z.enum(["free", "plus", "pro", "team", "api"]).default("pro"),
-  status: z.enum(["ready", "in_use", "cooling_down", "exhausted", "disabled"]).default("ready"),
+  status: z.enum(["ready", "in_use", "cooling_down", "exhausted", "disabled", "archived", "frozen"]).default("ready"),
   cooldownDurationMinutes: z.coerce.number().min(1).default(180),
   quotaResetTime: z.string().optional(),
   notes: z.string().optional(),

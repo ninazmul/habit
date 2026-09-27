@@ -12,11 +12,15 @@ import {
   Pencil,
   Trash2,
   Flame,
-  Sparkles,
   Zap,
   Mail,
-  Layers,
-  ChevronRight,
+  Ban,
+  Archive,
+  Snowflake,
+  Unlock,
+  MoreHorizontal,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +50,10 @@ import {
   resetAccountCooldown,
   deleteAIAccount,
   updateAIAccount,
+  deactivateAccount,
+  archiveAccount,
+  freezeAccount,
+  reactivateAccount,
 } from "@/lib/actions/ai-account.actions";
 import { IAIAccount, AIAccountStatus, AIAccountTier } from "@/types/habit";
 import toast from "react-hot-toast";
@@ -91,7 +99,9 @@ const accountStatusPriority: Record<AIAccountStatus, number> = {
   in_use: 1,
   cooling_down: 2,
   exhausted: 3,
-  disabled: 4,
+  frozen: 4,
+  disabled: 5,
+  archived: 6,
 };
 
 function cooldownReadyTime(account: IAIAccount) {
@@ -160,10 +170,15 @@ export default function AIAccountsPage() {
     ready: 0,
     inUse: 0,
     coolingDown: 0,
+    deactivated: 0,
+    archived: 0,
+    frozen: 0,
   });
   const [activeService, setActiveService] = useState("all");
+  const [showArchived, setShowArchived] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   // Create Modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -303,9 +318,59 @@ export default function AIAccountsPage() {
     }
   };
 
-  const sortedAccounts = [...accounts].sort((first, second) => {
+  const handleDeactivate = async (account: IAIAccount) => {
+    try {
+      await deactivateAccount(account._id);
+      toast.success(`${account.name} deactivated`);
+      setOpenMenuId(null);
+      loadData();
+    } catch (err) {
+      toast.error("Failed to deactivate account");
+    }
+  };
+
+  const handleArchive = async (account: IAIAccount) => {
+    try {
+      await archiveAccount(account._id);
+      toast.success(`${account.name} archived`);
+      setOpenMenuId(null);
+      loadData();
+    } catch (err) {
+      toast.error("Failed to archive account");
+    }
+  };
+
+  const handleFreeze = async (account: IAIAccount) => {
+    try {
+      await freezeAccount(account._id);
+      toast.success(`${account.name} frozen`);
+      setOpenMenuId(null);
+      loadData();
+    } catch (err) {
+      toast.error("Failed to freeze account");
+    }
+  };
+
+  const handleReactivate = async (account: IAIAccount) => {
+    try {
+      await reactivateAccount(account._id);
+      toast.success(`${account.name} reactivated`);
+      setOpenMenuId(null);
+      loadData();
+    } catch (err) {
+      toast.error("Failed to reactivate account");
+    }
+  };
+
+  const filteredAccounts = accounts.filter((acc) => {
+    if (!showArchived && acc.status === "archived") return false;
+    return true;
+  });
+
+  const sortedAccounts = [...filteredAccounts].sort((first, second) => {
     const statusDifference =
-      accountStatusPriority[first.status] - accountStatusPriority[second.status];
+      accountStatusPriority[first.status] -
+      accountStatusPriority[second.status];
 
     if (statusDifference) return statusDifference;
 
@@ -340,7 +405,7 @@ export default function AIAccountsPage() {
       </div>
 
       {/* Summary Stat Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         <div className="p-3.5 rounded-xl border border-border bg-card/60">
           <p className="text-[11px] font-medium text-muted-foreground">
             Total Accounts
@@ -371,24 +436,68 @@ export default function AIAccountsPage() {
             {summary.coolingDown}
           </p>
         </div>
+        <div className="p-3.5 rounded-xl border border-border bg-card/60">
+          <p className="text-[11px] font-medium text-muted-foreground">
+            Frozen
+          </p>
+          <p className="text-xl font-bold text-cyan-500 mt-0.5">
+            {summary.frozen}
+          </p>
+        </div>
+        <div className="p-3.5 rounded-xl border border-border bg-card/60">
+          <p className="text-[11px] font-medium text-muted-foreground">
+            Deactivated
+          </p>
+          <p className="text-xl font-bold text-gray-500 mt-0.5">
+            {summary.deactivated}
+          </p>
+        </div>
+        <div className="p-3.5 rounded-xl border border-border bg-card/60">
+          <p className="text-[11px] font-medium text-muted-foreground">
+            Archived
+          </p>
+          <p className="text-xl font-bold text-zinc-500 mt-0.5">
+            {summary.archived}
+          </p>
+        </div>
       </div>
 
-      {/* Service Tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar border-b border-border/60 pb-3">
-        {servicesList.map((svc) => (
-          <button
-            key={svc.id}
-            onClick={() => setActiveService(svc.id)}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0",
-              activeService === svc.id
-                ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
-            )}
-          >
-            {svc.label}
-          </button>
-        ))}
+      {/* Service Tabs + Archived Toggle */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border/60 pb-3">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          {servicesList.map((svc) => (
+            <button
+              key={svc.id}
+              onClick={() => setActiveService(svc.id)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0",
+                activeService === svc.id
+                  ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
+              )}
+            >
+              {svc.label}
+            </button>
+          ))}
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setShowArchived((v) => !v)}
+          className={cn(
+            "h-8 text-xs rounded-lg shrink-0 gap-1.5",
+            showArchived && "bg-secondary/60 border-secondary",
+          )}
+        >
+          {showArchived ? (
+            <Eye className="w-3.5 h-3.5" />
+          ) : (
+            <EyeOff className="w-3.5 h-3.5" />
+          )}
+          {showArchived ? "Hiding Archived" : "Show Archived"}
+        </Button>
       </div>
 
       {/* Accounts List */}
@@ -397,15 +506,16 @@ export default function AIAccountsPage() {
           <div className="col-span-full py-12 text-center text-xs text-muted-foreground">
             Loading accounts & cooldowns...
           </div>
-        ) : accounts.length === 0 ? (
+        ) : sortedAccounts.length === 0 ? (
           <div className="col-span-full py-16 text-center border border-dashed rounded-2xl border-border/80">
             <Cpu className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
             <h3 className="text-sm font-semibold text-foreground">
               No AI accounts found
             </h3>
             <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
-              Add multiple ChatGPT, Claude or Cursor accounts to automatically
-              rotate quotas and manage cooldowns.
+              {showArchived && summary.archived > 0
+                ? 'Toggle "Show Archived" off or register a new account.'
+                : "Add multiple ChatGPT, Claude or Cursor accounts to automatically rotate quotas and manage cooldowns."}
             </p>
             <Button
               size="sm"
@@ -421,6 +531,12 @@ export default function AIAccountsPage() {
             const isCooling = acc.status === "cooling_down";
             const isInUse = acc.status === "in_use";
             const isReady = acc.status === "ready";
+            const isExhausted = acc.status === "exhausted";
+            const isFrozen = acc.status === "frozen";
+            const isDeactivated = acc.status === "disabled";
+            const isArchived = acc.status === "archived";
+            const isInactive = isFrozen || isDeactivated || isArchived;
+            const isMenuOpen = openMenuId === acc._id;
 
             return (
               <Card
@@ -430,9 +546,18 @@ export default function AIAccountsPage() {
                   isInUse && "border-blue-500/60 shadow-md shadow-blue-500/10",
                   isCooling && "border-amber-500/50 bg-amber-500/5",
                   isReady && "border-border/80 hover:border-emerald-500/50",
+                  isFrozen && "border-cyan-500/50 bg-cyan-500/5",
+                  isDeactivated && "border-gray-400/40",
+                  isArchived && "border-zinc-500/40",
+                  isInactive && "opacity-80",
                 )}
               >
-                <CardContent className="p-4 space-y-3.5">
+                <CardContent
+                  className={cn(
+                    "p-4 space-y-3.5",
+                    isInactive && "grayscale-[0.4]",
+                  )}
+                >
                   {/* Header: Service + Name + Tier */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -455,7 +580,14 @@ export default function AIAccountsPage() {
                         {acc.service.slice(0, 2)}
                       </div>
                       <div className="min-w-0">
-                        <h4 className="text-sm font-bold text-foreground truncate">
+                        <h4
+                          className={cn(
+                            "text-sm font-bold truncate",
+                            isInactive
+                              ? "text-muted-foreground"
+                              : "text-foreground",
+                          )}
+                        >
                           {acc.name}
                         </h4>
                         <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -495,6 +627,34 @@ export default function AIAccountsPage() {
                           Cooldown
                         </span>
                       )}
+
+                      {isExhausted && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 text-red-500 border border-red-500/20">
+                          <AlertTriangle className="w-3 h-3" />
+                          Exhausted
+                        </span>
+                      )}
+
+                      {isFrozen && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-600 border border-cyan-500/20">
+                          <Snowflake className="w-3 h-3" />
+                          Frozen
+                        </span>
+                      )}
+
+                      {isDeactivated && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-500/10 text-gray-600 border border-gray-500/20">
+                          <Ban className="w-3 h-3" />
+                          Deactivated
+                        </span>
+                      )}
+
+                      {isArchived && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-500/10 text-zinc-600 border border-zinc-500/20">
+                          <Archive className="w-3 h-3" />
+                          Archived
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -518,7 +678,7 @@ export default function AIAccountsPage() {
 
                   {/* Action Buttons */}
                   <div className="flex items-center justify-between pt-2 border-t border-border/50 gap-2">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                       {isReady && (
                         <Button
                           size="sm"
@@ -554,9 +714,81 @@ export default function AIAccountsPage() {
                           Force Ready
                         </Button>
                       )}
+
+                      {isExhausted && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleReset(acc)}
+                          className="h-8 text-xs font-semibold rounded-lg"
+                        >
+                          <RotateCw className="w-3 h-3 mr-1" />
+                          Start Cooldown
+                        </Button>
+                      )}
+
+                      {isInactive && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleReactivate(acc)}
+                          className="h-8 text-xs font-semibold rounded-lg hover:border-emerald-500 hover:text-emerald-600 text-emerald-600 border-emerald-500/40"
+                        >
+                          <Unlock className="w-3 h-3 mr-1" />
+                          Reactivate
+                        </Button>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1 shrink-0">
+                      {!isInactive && (
+                        <div className="relative">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() =>
+                              setOpenMenuId(isMenuOpen ? null : acc._id)
+                            }
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            aria-label={`Status options for ${acc.name}`}
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+
+                          {isMenuOpen && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-10"
+                                onClick={() => setOpenMenuId(null)}
+                              />
+                              <div className="absolute right-0 top-full mt-1 z-20 min-w-[160px] rounded-xl border border-border bg-popover shadow-lg shadow-black/5 p-1 text-sm">
+                                <button
+                                  onClick={() => handleFreeze(acc)}
+                                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-cyan-500/10 hover:text-cyan-600 text-left"
+                                >
+                                  <Snowflake className="w-3.5 h-3.5" />
+                                  Freeze Account
+                                </button>
+                                <button
+                                  onClick={() => handleDeactivate(acc)}
+                                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-gray-500/10 hover:text-gray-600 text-left"
+                                >
+                                  <Ban className="w-3.5 h-3.5" />
+                                  Deactivate
+                                </button>
+                                <button
+                                  onClick={() => handleArchive(acc)}
+                                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs hover:bg-zinc-500/10 hover:text-zinc-700 text-left"
+                                >
+                                  <Archive className="w-3.5 h-3.5" />
+                                  Archive
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+
                       <Button
                         variant="ghost"
                         size="icon"

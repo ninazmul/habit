@@ -6,7 +6,14 @@ export interface IAIAccountDocument extends Document {
   name: string;
   email?: string;
   tier: "free" | "plus" | "pro" | "team" | "api";
-  status: "ready" | "in_use" | "cooling_down" | "exhausted" | "disabled";
+  status:
+    | "ready"
+    | "in_use"
+    | "cooling_down"
+    | "exhausted"
+    | "disabled"
+    | "archived"
+    | "frozen";
   cooldownDurationMinutes: number;
   cooldownUntil?: Date;
   exhaustedAt?: Date;
@@ -31,7 +38,15 @@ const AIAccountSchema = new Schema<IAIAccountDocument>(
     },
     status: {
       type: String,
-      enum: ["ready", "in_use", "cooling_down", "exhausted", "disabled"],
+      enum: [
+        "ready",
+        "in_use",
+        "cooling_down",
+        "exhausted",
+        "disabled",
+        "archived",
+        "frozen",
+      ],
       default: "ready",
       index: true,
     },
@@ -43,7 +58,7 @@ const AIAccountSchema = new Schema<IAIAccountDocument>(
     notes: { type: String },
     order: { type: Number, default: 0 },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 AIAccountSchema.index({ userId: 1, service: 1, status: 1 });

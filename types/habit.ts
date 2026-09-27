@@ -25,7 +25,7 @@ export interface ITask {
 
 export type AIAccountTier = "free" | "plus" | "pro" | "team" | "api";
 
-export type AIAccountStatus = "ready" | "in_use" | "cooling_down" | "exhausted" | "disabled";
+export type AIAccountStatus = "ready" | "in_use" | "cooling_down" | "exhausted" | "disabled" | "archived" | "frozen";
 
 export interface IAIAccount {
   _id: string;

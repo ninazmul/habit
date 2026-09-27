@@ -7,6 +7,14 @@ import { AIAccountSchema } from "@/validations/habit";
 import { revalidatePath } from "next/cache";
 import { addMinutes } from "date-fns";
 
+const INACTIVE_STATUSES = ["disabled", "archived", "frozen"] as const;
+
+function isInactiveStatus(status: string): boolean {
+  return INACTIVE_STATUSES.includes(
+    status as (typeof INACTIVE_STATUSES)[number],
+  );
+}
+
 export async function getAIAccounts(service?: string) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
@@ -27,7 +35,7 @@ export async function getAIAccounts(service?: string) {
         status: "ready",
         cooldownUntil: null,
       },
-    }
+    },
   );
 
   const query: Record<string, unknown> = { userId };
@@ -44,13 +52,22 @@ export async function getAIAccounts(service?: string) {
 
 export async function getAIAccountSummary() {
   const { userId } = await auth();
-  if (!userId) return { total: 0, ready: 0, inUse: 0, coolingDown: 0 };
+  if (!userId)
+    return {
+      total: 0,
+      ready: 0,
+      inUse: 0,
+      coolingDown: 0,
+      deactivated: 0,
+      archived: 0,
+      frozen: 0,
+    };
 
   await connectToDatabase();
 
   const now = new Date();
 
-  // Auto-recover expired cooldowns
+  // Auto-recover expired cooldowns (skip archived/frozen/disabled)
   await AIAccount.updateMany(
     {
       userId,
@@ -62,7 +79,7 @@ export async function getAIAccountSummary() {
         status: "ready",
         cooldownUntil: null,
       },
-    }
+    },
   );
 
   const accounts = await AIAccount.find({ userId }).lean();
@@ -70,9 +87,14 @@ export async function getAIAccountSummary() {
   const total = accounts.length;
   const ready = accounts.filter((a) => a.status === "ready").length;
   const inUse = accounts.filter((a) => a.status === "in_use").length;
-  const coolingDown = accounts.filter((a) => a.status === "cooling_down").length;
+  const coolingDown = accounts.filter(
+    (a) => a.status === "cooling_down",
+  ).length;
+  const deactivated = accounts.filter((a) => a.status === "disabled").length;
+  const archived = accounts.filter((a) => a.status === "archived").length;
+  const frozen = accounts.filter((a) => a.status === "frozen").length;
 
-  return { total, ready, inUse, coolingDown };
+  return { total, ready, inUse, coolingDown, deactivated, archived, frozen };
 }
 
 export async function createAIAccount(rawInput: unknown) {
@@ -109,7 +131,7 @@ export async function updateAIAccount(id: string, rawInput: unknown) {
   const account = await AIAccount.findOneAndUpdate(
     { _id: id, userId },
     { $set: updateData },
-    { new: true }
+    { new: true },
   ).lean();
 
   if (!account) throw new Error("AI Account not found");
@@ -122,7 +144,7 @@ export async function updateAIAccount(id: string, rawInput: unknown) {
 
 export async function markAccountExhausted(
   id: string,
-  customDurationMinutes?: number
+  customDurationMinutes?: number,
 ) {
   const { userId } = await auth();
   if (!userId) throw new Error("Unauthorized");
@@ -131,6 +153,9 @@ export async function markAccountExhausted(
 
   const account = await AIAccount.findOne({ _id: id, userId });
   if (!account) throw new Error("AI Account not found");
+  if (isInactiveStatus(account.status)) {
+    throw new Error("Cannot mark inactive account as exhausted");
+  }
 
   const duration =
     customDurationMinutes && customDurationMinutes > 0
@@ -160,6 +185,9 @@ export async function switchActiveAccount(id: string) {
 
   const account = await AIAccount.findOne({ _id: id, userId });
   if (!account) throw new Error("AI Account not found");
+  if (isInactiveStatus(account.status)) {
+    throw new Error("Cannot activate an inactive account");
+  }
 
   // Set any other active account for this service to "ready"
   await AIAccount.updateMany(
@@ -171,7 +199,7 @@ export async function switchActiveAccount(id: string) {
     },
     {
       $set: { status: "ready" },
-    }
+    },
   );
 
   account.status = "in_use";
@@ -190,6 +218,12 @@ export async function resetAccountCooldown(id: string) {
 
   await connectToDatabase();
 
+  const existing = await AIAccount.findOne({ _id: id, userId });
+  if (!existing) throw new Error("AI Account not found");
+  if (isInactiveStatus(existing.status)) {
+    throw new Error("Cannot reset cooldown on an inactive account");
+  }
+
   const account = await AIAccount.findOneAndUpdate(
     { _id: id, userId },
     {
@@ -199,7 +233,7 @@ export async function resetAccountCooldown(id: string) {
         exhaustedAt: null,
       },
     },
-    { new: true }
+    { new: true },
   ).lean();
 
   if (!account) throw new Error("AI Account not found");
@@ -222,4 +256,90 @@ export async function deleteAIAccount(id: string) {
   revalidatePath("/ai-accounts");
 
   return { success: true };
+}
+
+export async function deactivateAccount(id: string) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  await connectToDatabase();
+
+  const account = await AIAccount.findOneAndUpdate(
+    { _id: id, userId },
+    { $set: { status: "disabled" } },
+    { new: true },
+  ).lean();
+
+  if (!account) throw new Error("AI Account not found");
+
+  revalidatePath("/");
+  revalidatePath("/ai-accounts");
+
+  return JSON.parse(JSON.stringify(account));
+}
+
+export async function archiveAccount(id: string) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  await connectToDatabase();
+
+  const account = await AIAccount.findOneAndUpdate(
+    { _id: id, userId },
+    { $set: { status: "archived" } },
+    { new: true },
+  ).lean();
+
+  if (!account) throw new Error("AI Account not found");
+
+  revalidatePath("/");
+  revalidatePath("/ai-accounts");
+
+  return JSON.parse(JSON.stringify(account));
+}
+
+export async function freezeAccount(id: string) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  await connectToDatabase();
+
+  const account = await AIAccount.findOneAndUpdate(
+    { _id: id, userId },
+    { $set: { status: "frozen" } },
+    { new: true },
+  ).lean();
+
+  if (!account) throw new Error("AI Account not found");
+
+  revalidatePath("/");
+  revalidatePath("/ai-accounts");
+
+  return JSON.parse(JSON.stringify(account));
+}
+
+export async function reactivateAccount(id: string) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  await connectToDatabase();
+
+  const account = await AIAccount.findOneAndUpdate(
+    { _id: id, userId, status: { $in: INACTIVE_STATUSES } },
+    {
+      $set: {
+        status: "ready",
+        cooldownUntil: null,
+        exhaustedAt: null,
+      },
+    },
+    { new: true },
+  ).lean();
+
+  if (!account) throw new Error("AI Account not found or not inactive");
+
+  revalidatePath("/");
+  revalidatePath("/ai-accounts");
+
+  return JSON.parse(JSON.stringify(account));
 }
