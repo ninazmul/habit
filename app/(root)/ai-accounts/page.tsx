@@ -542,7 +542,8 @@ export default function AIAccountsPage() {
               <Card
                 key={acc._id}
                 className={cn(
-                  "relative border transition-all overflow-hidden",
+                  "relative border transition-all",
+                  isMenuOpen && "z-30",
                   isInUse && "border-blue-500/60 shadow-md shadow-blue-500/10",
                   isCooling && "border-amber-500/50 bg-amber-500/5",
                   isReady && "border-border/80 hover:border-emerald-500/50",
