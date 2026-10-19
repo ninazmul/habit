@@ -253,8 +253,8 @@ export default function DashboardPage() {
 
   const dashboardAIStatusPriority: Record<AIAccountStatus, number> = {
     in_use: 0,
-    cooling_down: 1,
-    ready: 2,
+    ready: 1,
+    cooling_down: 2,
     exhausted: 3,
     frozen: 4,
     disabled: 5,
@@ -468,12 +468,12 @@ export default function DashboardPage() {
               <CardContent className="p-4 md:p-5 space-y-4">
                 {/* Mini stat pills */}
                 <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-0.5 px-0.5">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-blue-500/20 bg-blue-500/5 text-blue-600 text-[11px] font-bold whitespace-nowrap">
+                    <Zap className="w-3.5 h-3.5" /> {aiSummary.inUse} Active
+                  </div>
                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-emerald-600 text-[11px] font-bold whitespace-nowrap">
                     <CheckCircle2 className="w-3.5 h-3.5" /> {aiSummary.ready}{" "}
                     Ready
-                  </div>
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-blue-500/20 bg-blue-500/5 text-blue-600 text-[11px] font-bold whitespace-nowrap">
-                    <Zap className="w-3.5 h-3.5" /> {aiSummary.inUse} Active
                   </div>
                   <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-amber-500/20 bg-amber-500/5 text-amber-600 text-[11px] font-bold whitespace-nowrap">
                     <Clock className="w-3.5 h-3.5" /> {aiSummary.coolingDown}{" "}
