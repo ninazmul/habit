@@ -46,7 +46,6 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
   },
-  "main": "index.js",
   "author": "ninazmul <nazmulsaw@gmail.com>",
   "license": "MIT"
 }
